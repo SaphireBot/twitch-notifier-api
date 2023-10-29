@@ -5,7 +5,7 @@ import TwitchManager from "../manager";
 
 export default async function disable(req: Request, res: Response) {
 
-    if (req.headers.authorization !== env.TWITCH_CLIENT_ID)
+    if (req.headers.authorization !== env.TWITCH_CLIENT_SECRET)
         return res.send(false);
 
     const data = req.body as { streamer: string, channelId: string };

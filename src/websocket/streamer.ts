@@ -4,7 +4,7 @@ import { CallbackType } from "../@types/twitch";
 
 export default async function disable(data: string, callback: CallbackType) {
 
-    if (data !== env.TWITCH_CLIENT_ID)
+    if (data !== env.TWITCH_CLIENT_SECRET)
         return callback([]);
 
     return callback(
