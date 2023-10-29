@@ -1,11 +1,21 @@
 # Logs
+<<<<<<< HEAD
 logs
 *.log
+=======
+>>>>>>> f928dc2 (ok)
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
 .pnpm-debug.log*
+<<<<<<< HEAD
+=======
+backup
+TODO.txt
+updates.txt
+*.zip
+>>>>>>> f928dc2 (ok)
 
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
@@ -83,6 +93,12 @@ web_modules/
 .cache
 .parcel-cache
 
+<<<<<<< HEAD
+=======
+# internal cache
+cache.sqlite
+
+>>>>>>> f928dc2 (ok)
 # Next.js build output
 .next
 out
@@ -104,6 +120,16 @@ dist
 .temp
 .cache
 
+<<<<<<< HEAD
+=======
+# Discloud
+discloud.config
+discloud/backups
+
+# Docusaurus cache and generated files
+.docusaurus
+
+>>>>>>> f928dc2 (ok)
 # Serverless directories
 .serverless/
 
@@ -125,3 +151,12 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+<<<<<<< HEAD
+=======
+
+# Github Commit
+.zip
+# discloud
+.discloudignore
+*.sqlite
+>>>>>>> f928dc2 (ok)
