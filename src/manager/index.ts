@@ -2,15 +2,9 @@ import { env } from "process";
 import Database from "../database";
 import { ButtonStyle, Collection, DiscordAPIError, REST, Routes, parseEmoji, time } from "discord.js";
 import { TwitchLanguages, emojis as e } from "../data.json";
-import {
-    FetchError,
-    OauthToken,
-    OauthValidade,
-    StreamData,
-    NotifierData,
-    UserData,
-} from "../@types/twitch";
+import { StreamData, NotifierData, UserData, } from "../@types/twitch";
 import { TwitchSchema } from "../database/twitch_model";
+import { renewToken, checkAccessTokenAndStart } from "./tokens";
 
 const rest = new REST().setToken(env.DISCORD_TOKEN);
 
@@ -18,6 +12,7 @@ export default new class TwitchManager {
     declare streamers: Set<string>;
     declare data: Collection<string, Record<string, NotifierData>>;
     declare TwitchAccessToken: string | undefined | void;
+    declare TwitchAccessTokenSecond: string | undefined | void;
     declare streamersOnline: Map<string, StreamData>;
     declare streamersData: Map<string, UserData>;
     declare notificationInThisSeason: number;
@@ -37,94 +32,37 @@ export default new class TwitchManager {
         this.streamersData = new Map();
         this.data = new Collection();
         this.TwitchAccessToken = undefined;
+        this.TwitchAccessTokenSecond = undefined;
         this.notificationInThisSeason = 0;
         this.streamersQueueCheck = [];
         this.rateLimit = {
             MaxLimit: 800,
             remaining: 800,
-            inCheck: false,
+            inCheck: false
         };
     }
 
     async load(): Promise<any> {
-        this.TwitchAccessToken = await this.getToken();
-        if (!this.TwitchAccessToken) this.TwitchAccessToken = await this.renewToken();
-        if (!this.TwitchAccessToken) return this.exit("Twitch Access Token not found");
+        await this.setTokens();
+        if (!this.TwitchAccessToken && !this.TwitchAccessTokenSecond) await renewToken(2);
+        if (!this.TwitchAccessToken && !this.TwitchAccessTokenSecond) return this.exit("Twitch Access Token not found");
 
         this.streamers = new Set(Array.from(this.data.keys()));
         this.streamersQueueCheck = Array.from(this.streamers);
 
-        return this.checkAccessTokenAndStart();
+        return checkAccessTokenAndStart();
     }
 
-    async getToken(): Promise<string | undefined> {
-        return await Database.Client.findOne({ id: env.SAPHIRE_ID }).then(doc => doc?.TwitchAccessToken).catch(() => undefined);
-    }
-
-    async renewToken(): Promise<string | undefined | void> {
-        // https://dev.twitch.tv/docs/api/get-started/
-        return await fetch(
-            `https://id.twitch.tv/oauth2/token?client_id=${env.TWITCH_CLIENT_ID}&client_secret=${env.TWITCH_CLIENT_SECRET}&grant_type=client_credentials`,
-            {
-                method: "POST",
-                headers: { "Content-Type": "application/x-www-form-urlencoded" }
-            }
-        )
-            .then(res => res.json())
-            .then(async (data: OauthToken | FetchError) => {
-
-                if ("status" in data)
-                    return console.log("Fail to validate the token");
-
-                return await Database.Client.updateOne(
-                    { id: env.SAPHIRE_ID },
-                    { $set: { TwitchAccessToken: data.access_token } }
-                )
-                    .then(() => data.access_token)
-                    .catch(err => console.log("Function renewToken", err));
-            })
-            .catch(err => console.log("Function renewToken", err));
-    }
-
-    exit(message: string) {
-        console.log(message);
-        return process.exit();
-    }
-
-    async checkAccessTokenAndStart() {
-
-        // https://dev.twitch.tv/docs/authentication/validate-tokens/#how-to-validate-a-token
-        return await fetch(
-            "https://id.twitch.tv/oauth2/validate",
-            {
-                method: "GET",
-                headers: { Authorization: `OAuth ${this.TwitchAccessToken}` }
-            }
-        )
-            .then(res => res.json())
-            .then(async (data: OauthValidade | FetchError) => {
-                if (
-                    ("status" in data && "message" in data)
-                    || ("expires_in" in data && data.expires_in < 86400)
-                ) {
-                    this.TwitchAccessToken = await this.renewToken();
-                    if (!this.TwitchAccessToken) return this.exit("Twitch Access Token not found");
-                }
-
-                this.startCounter();
-                this.checkStreamersStatus();
-                return;
-            })
-            .catch(err => {
-                console.log(err);
-                return this.exit("Function checkAccessTokenAndStartLoading");
-            });
-
+    async setTokens(): Promise<void> {
+        const data = await Database.Client.findOne({ id: env.SAPHIRE_ID });
+        this.TwitchAccessToken = data?.TwitchAccessToken;
+        this.TwitchAccessTokenSecond = data?.TwitchAccessTokenSecond;
+        return;
     }
 
     async fetcher<T = unknown>(url: string): Promise<"TIMEOUT" | [] | undefined | T> {
 
-        if (!url || !this.TwitchAccessToken) return;
+        if (!url || (!this.TwitchAccessToken && !this.TwitchAccessTokenSecond)) return;
 
         return new Promise(resolve => {
 
@@ -145,13 +83,8 @@ export default new class TwitchManager {
                 return resolve([]);
             }, 2000);
 
-            fetch(url, {
-                method: "GET",
-                headers: {
-                    Authorization: `Bearer ${this.TwitchAccessToken}`,
-                    "Client-Id": `${env.TWITCH_CLIENT_ID}`
-                }
-            })
+            const headers = this.randomHeadersAutorization;
+            fetch(url, { method: "GET", headers })
                 .then(res => {
                     if (timedOut) return;
                     clearTimeout(timeout);
@@ -183,14 +116,14 @@ export default new class TwitchManager {
 
                     if (res.message === "invalid access token") {
                         this.rateLimit.inCheck = true;
+                        resolve([]);
 
-                        this.TwitchAccessToken = await this.renewToken();
-                        if (!this.TwitchAccessToken) {
-                            resolve("TIMEOUT");
+                        await renewToken(headers.Authorization.replace("Bearer ", "") === this.TwitchAccessToken ? 1 : 2);
+                        if (!this.TwitchAccessToken && !this.TwitchAccessTokenSecond) {
                             return this.exit("TwitchAccessToken missing");
                         }
 
-                        return resolve([]);
+                        return;
                     }
 
                     if (url.includes("/followers")) return resolve(res.total);
@@ -669,5 +602,23 @@ export default new class TwitchManager {
 
     getTwitchLanguages(str: string | undefined) {
         return TwitchLanguages[str as keyof typeof TwitchLanguages] || "Indefinido";
+    }
+
+    get randomHeadersAutorization() {
+        return [
+            {
+                Authorization: `Bearer ${this.TwitchAccessToken}`,
+                "Client-Id": `${env.TWITCH_CLIENT_ID}`
+            },
+            {
+                Authorization: `Bearer ${this.TwitchAccessTokenSecond}`,
+                "Client-Id": `${env.TWITCH_CLIENT_ID_SECOND}`
+            }
+        ][Math.floor(Math.random() * 2)];
+    }
+
+    exit(message: string) {
+        console.log(message);
+        return process.exit();
     }
 };
