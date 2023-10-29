@@ -14,7 +14,7 @@ import getstreamers from "./request/get_streamers";
 const app = express();
 app.use(express.json());
 app.disable("x-powered-by");
-app.use(cors({ methods: "GET,POST,DELETE" }));
+app.use(cors({ methods: "GET,POST,DELETE",  }));
 
 const server = createServer(app);
 const ws = new Server(server);

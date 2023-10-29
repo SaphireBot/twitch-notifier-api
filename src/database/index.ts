@@ -3,6 +3,7 @@ import TwitchModel from "./twitch_model";
 import ClientModel from "./client_model";
 import { env } from "process";
 import TwitchManager from "../manager";
+import { NotifierData } from "../@types/twitch";
 
 export default new class Database {
     Twitch = TwitchModel;
@@ -65,6 +66,8 @@ export default new class Database {
                         for await (const doc of documents)
                             if (doc?.streamer) {
                                 TwitchManager.data.set(doc.streamer, doc.notifiers);
+                                for (const data of Object.values(doc.notifiers as NotifierData[]))
+                                    TwitchManager.tempChannelsNotified.delete(`${doc.streamer}.${data.channelId}`);
                                 documentId.set(doc._id.toString(), doc.streamer);
                             }
                     }, 1000);

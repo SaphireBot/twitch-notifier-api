@@ -1,6 +1,6 @@
 import { env } from "process";
 import Database from "../database";
-import { ButtonStyle, Collection, REST, Routes, parseEmoji, time } from "discord.js";
+import { ButtonStyle, Collection, DiscordAPIError, REST, Routes, parseEmoji, time } from "discord.js";
 import { TwitchLanguages, emojis as e } from "../data.json";
 import {
     FetchError,
@@ -22,6 +22,9 @@ export default new class TwitchManager {
     declare streamersData: Map<string, UserData>;
     declare notificationInThisSeason: number;
     declare streamersQueueCheck: string[];
+    channelsToIgnore = new Set<string>();
+    tempChannelsNotified = new Set<string>();
+    retryAfter = new Map<string, number>();
     rateLimit: {
         MaxLimit: number
         remaining: number
@@ -280,28 +283,27 @@ export default new class TwitchManager {
 
     async checkStreamersStatus(): Promise<NodeJS.Timeout> {
 
-        let streamers = this.streamersQueueCheck.slice(0, 100);
+        let streamers = this.streamersQueueCheck.splice(0, 100);
 
         if (!streamers.length) {
             this.streamersQueueCheck = Array.from(this.data.keys());
-            streamers = this.streamersQueueCheck.slice(0, 100);
+            streamers = this.streamersQueueCheck.splice(0, 100);
         }
 
         if (streamers?.length) {
             const streamersStreamStatus = await this.fetcher<StreamData[]>(`https://api.twitch.tv/helix/streams?${streamers.map(str => `user_login=${str}`).join("&")}`);
-
             if (streamersStreamStatus !== "TIMEOUT" && Array.isArray(streamersStreamStatus)) {
                 this.treatStreamersOffline(streamers.filter(streamer => !streamersStreamStatus.some(d => d.user_login === streamer)));
                 this.treatStreamersOnline(streamersStreamStatus);
             }
 
-            streamers.splice(0, streamers.length);
         }
 
         return setTimeout(() => this.checkStreamersStatus(), 1000 * 5);
     }
 
     async treatStreamersOnline(streams: StreamData[]) {
+
         if (!streams?.length) return;
 
         const toFetchUncachedStreamers: string[] = [];
@@ -429,7 +431,16 @@ export default new class TwitchManager {
 
             const offlineImage = data?.offline_image_url || null;
 
-            for await (const channelId of channels)
+            for await (const channelId of channels) {
+                if (this.channelsToIgnore.has(channelId)) continue;
+                this.tempChannelsNotified.delete(`${streamer}.${channelId}`);
+
+                if (this.retryAfter.has(`${streamer}.${channelId}`)) {
+                    const time = this.retryAfter.get(`${streamer}.${channelId}`) || 0;
+                    if (time > Date.now()) return;
+                    this.retryAfter.delete(`${streamer}.${channelId}`);
+                }
+
                 await rest.post(
                     Routes.channelMessages(channelId),
                     {
@@ -463,7 +474,8 @@ export default new class TwitchManager {
                         }
                     }
                 )
-                    .catch(console.log);
+                    .catch(err => this.errorToPostMessage(err, streamer, channelId, undefined, data));
+            }
 
         }
         return;
@@ -486,13 +498,28 @@ export default new class TwitchManager {
         const url = `https://www.twitch.tv/${streamer}`;
         const messageDefault = `**${stream.display_name}** está em live na Twitch.`;
         const date = new Date(stream.started_at);
-        const alreadySended = <string[]>[];
-        const notifiersData: Record<string, NotifierData> = document.notifiers;
+        const dataToSet: Record<string, boolean> = {};
 
-        const notifier = async (data: NotifierData) => {
+        for await (const data of channelsData) {
+            if (this.channelsToIgnore.has(data.channelId)) continue;
+
+            if (this.retryAfter.has(`${streamer}.${data.channelId}`)) {
+                const time = this.retryAfter.get(`${streamer}.${data.channelId}`) || 0;
+                if (time > Date.now()) return;
+                this.retryAfter.delete(`${streamer}.${data.channelId}`);
+            }
+
+            if (data.notified) {
+                this.tempChannelsNotified.add(`${streamer}.${data.channelId}`);
+                continue;
+            }
+
+            if (this.tempChannelsNotified.has(`${streamer}.${data.channelId}`)) continue;
+            this.tempChannelsNotified.add(`${streamer}.${data.channelId}`);
+            this.notificationInThisSeason++;
 
             const roleMention = data.roleId ? `<@&${data.roleId}>, ` : "";
-            const content = `${e.Notification} ` + roleMention + data.message ? data.message : messageDefault;
+            const content = `${e.Notification} ${roleMention}${data.message ? data.message : messageDefault}`;
 
             await rest.post(
                 Routes.channelMessages(data.channelId),
@@ -513,7 +540,7 @@ export default new class TwitchManager {
                             fields: [
                                 {
                                     name: "📝 Adicional",
-                                    value: `⏳ Está online ${time(date, "R")}\n🗓️ Iniciou a live: ${this.datecomplete(stream.started_at)}\n⏱️ Demorei \`${this.stringDate(Date.now() - date?.valueOf())}\` para enviar esta notificação\n🏷️ Tags: ${stream.tags?.map((tag: string) => `\`${tag}\``)?.join(", ") || "Nenhuma tag"}\n🔞 +18: ${stream.is_mature ? "Sim" : "Não"}\n💬 Idioma: ${this.getTwitchLanguages(stream.language)}`
+                                    value: `⏳ Está online ${time(date, "R")}\n🗓️ Iniciou a live: ${this.datecomplete(stream.started_at)}\n🏷️ Tags: ${stream.tags?.map((tag: string) => `\`${tag}\``)?.join(", ") || "Nenhuma tag"}\n🔞 +18: ${stream.is_mature ? "Sim" : "Não"}\n💬 Idioma: ${this.getTwitchLanguages(stream.language)}`
                                 }
                             ],
                             image: { url: imageUrl as string },
@@ -535,77 +562,105 @@ export default new class TwitchManager {
                     }
                 }
             )
-                .then(() => {
-                    data.notified = true;
-                    notifiersData[data.channelId] = data;
-                })
-                .catch(() => {
-                    delete notifiersData[data.channelId];
-                });
-        };
-
-        for (let i = 0; i < channelsData.length; i++) {
-            const data = channelsData[i];
-            if (alreadySended.includes(data.channelId) || data.notified) continue;
-            alreadySended.push(data.channelId);
-
-            this.notificationInThisSeason++;
-
-            notifier(data);
+                .then(() => dataToSet[`notifiers.${data.channelId}.notified`] = true)
+                .catch(err => this.errorToPostMessage(err, streamer, data.channelId, data.guildId, data));
             continue;
         }
 
-        const documentRefresh = await Database.Twitch.findOneAndUpdate({ streamer }, { $set: notifiersData }, { new: true, upsert: true });
-        this.data.set(documentRefresh.streamer!, documentRefresh.notifiers);
+        if (!Object.keys(dataToSet)?.length) return;
+        const refreshData = await Database.Twitch.findOneAndUpdate(
+            { streamer },
+            { $set: dataToSet },
+            { new: true, upsert: true }
+        );
+
+        this.data.set(refreshData.streamer!, refreshData.notifiers);
         return;
+    }
+
+    errorToPostMessage(err: DiscordAPIError | any, streamer: string, channelId: string, guildId: string | undefined, data: NotifierData | UserData | null) {
+        if (!err) return;
+        this.tempChannelsNotified.delete(`${streamer}.${channelId}`);
+
+        // Unknown Guild
+        if (err.code === 10004) {
+            this.removeAllNotifiersFromThisGuild(guildId!);
+            return;
+        }
+
+        // Unknown Channel
+        if (err.code === 10003) {
+            this.removeAllChannelsFromDatabase(channelId);
+            return;
+        }
+
+        // Missing Access
+        if (err.code === 50001) {
+            this.retryAfter.set(`${streamer}.${channelId}`, Date.now() + (1000 * 60));
+            this.tempChannelsNotified.delete(`${streamer}.${channelId}`);
+            return;
+        }
+
+        console.log(err, data);
+    }
+
+    async removeAllNotifiersFromThisGuild(guildId: string) {
+        if (!guildId) return;
+
+        const notifiers = this.getAllNotifersFromThisGuild(guildId);
+        if (!notifiers?.length) return;
+
+        const unset: Record<string, boolean> = {};
+
+        for (const data of notifiers)
+            unset[`notifiers.${data.channelId}`] = true;
+
+        await Database.Twitch.updateMany({}, { $unset: { unset } });
+        return await this.refreshAllData();
+    }
+
+    async removeAllChannelsFromDatabase(channelId: string) {
+        this.channelsToIgnore.add(channelId);
+        await Database.Twitch.updateMany({}, { $unset: { [`notifiers.${channelId}`]: true } });
+        return await this.refreshAllData();
+    }
+
+    async removeChannel(streamer: string, channelId: string) {
+        const data = await Database.Twitch.findOneAndUpdate(
+            { streamer },
+            { $unset: { [`notifiers.${channelId}`]: true } },
+            { new: true, upsert: true }
+        );
+
+        this.data.set(streamer, data.notifiers);
+        return;
+    }
+
+    async refreshAllData() {
+        const data = await Database.Twitch.find();
+        for await (const d of data) {
+            if (!d.streamer || !d.notifiers) {
+                await Database.Twitch.findByIdAndDelete(d._id);
+                continue;
+            }
+            this.data.set(d.streamer, d.notifiers);
+        }
+
+        return true;
+    }
+
+    getAllNotifersFromThisGuild(guildId: string) {
+        return this.data
+            .toJSON()
+            .filter(v => Object.values(v || {})?.[0]?.guildId === guildId)
+            .map(v => Object.values(v || {})?.[0])
+            .flat()
+            || [];
     }
 
     num(num: number): string {
         const numberFormated = `${Intl.NumberFormat("pt-BR", { currency: "BRL", style: "currency" }).format(num)}`;
         return `${numberFormated.slice(3)}`.slice(0, -3);
-    }
-
-    stringDate(ms: number) {
-
-        if (!ms || isNaN(ms) || ms <= 0) return "0 segundo";
-
-        const totalYears = ms / (365.25 * 24 * 60 * 60 * 1000);
-        const date: Record<string, number> = {
-            millennia: Math.trunc(totalYears / 1000),
-            century: Math.trunc((totalYears % 1000) / 100),
-            years: Math.trunc(totalYears % 100),
-            months: 0,
-            days: Math.trunc(ms / 86400000),
-            hours: Math.trunc(ms / 3600000) % 24,
-            minutes: Math.trunc(ms / 60000) % 60,
-            seconds: Math.trunc(ms / 1000) % 60
-        };
-
-        if (date.days >= 30)
-            while (date.days >= 30) {
-                date.months++;
-                date.days -= 30;
-            }
-
-        const timeSequency = ["millennia", "century", "years", "months", "days", "hours", "minutes", "seconds"];
-        let result = "";
-
-        const translate: Record<string, (n: number) => string> = {
-            millennia: (n: number) => n === 1 ? "milênio" : "milênios",
-            century: (n: number) => n === 1 ? "século" : "séculos",
-            years: (n: number) => n === 1 ? "ano" : "anos",
-            months: (n: number) => n === 1 ? "mês" : "meses",
-            days: (n: number) => n === 1 ? "dia" : "dias",
-            hours: (n: number) => n === 1 ? "hora" : "horas",
-            minutes: (n: number) => n === 1 ? "minuto" : "minutos",
-            seconds: (n: number) => n === 1 ? "segundo" : "segundos"
-        };
-
-        for (const time of timeSequency)
-            if (date[time] > 0)
-                result += `${date[time]} ${translate[time](date[time])} `;
-
-        return result?.trim();
     }
 
     datecomplete(ms: number | string): string {

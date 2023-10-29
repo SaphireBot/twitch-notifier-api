@@ -63,16 +63,14 @@ export interface UsersDataResponse {
     data: UserData[]
 }
 
-export interface UpdateStreamerParams {
+export interface UpdateStreamerParams extends NotifierData {
     streamer: string
-    data: NotifierData
 }
 
 export interface NotifierData {
     channelId: string
     guildId: string
     notified: boolean
-    oldChannelId: string | undefined
     roleId: string | undefined
     message: string | undefined
 }

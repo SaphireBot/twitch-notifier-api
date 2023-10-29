@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { UpdateStreamerParams } from "../@types/twitch";
 import { env } from "process";
 import Database from "../database";
+import TwitchManager from "../manager";
 
 export default async function active(req: Request, res: Response) {
 
@@ -12,30 +13,33 @@ export default async function active(req: Request, res: Response) {
     if (!data) return res.send("missing content data");
 
     for (const key of ["streamer", "channelId", "guildId"])
-        if (!(key in req.body)) return res.send("missing content");
+        if (!(key in data)) return res.send("missing content");
 
     await Database.Twitch.updateOne(
         { streamer: data.streamer },
-        { $unset: { [`notifiers.${data.data.channelId}`]: true } }
+        { $unset: { [`notifiers.${data.channelId}`]: true } }
     );
 
     return await Database.Twitch.updateOne(
         { streamer: data.streamer },
         {
             $set: {
-                [`notifiers.${data.data.channelId}`]: {
-                    channelId: data.data.channelId,
-                    guildId: data.data.guildId,
+                [`notifiers.${data.channelId}`]: {
+                    channelId: data.channelId,
+                    guildId: data.guildId,
                     notified: false,
-                    oldChannelId: data.data.oldChannelId,
-                    roleId: data.data.roleId,
-                    message: data.data.message
+                    roleId: data.roleId,
+                    message: data.message
                 }
             }
         },
         { new: true, upsert: true }
     )
-        .then(() => res.send(true))
+        .then(() => {
+            TwitchManager.data.set(data.streamer, { [data.channelId]: data });
+            TwitchManager.tempChannelsNotified.delete(`${data.streamer}.${data.channelId}`);
+            return res.send(true);
+        })
         .catch(err => {
             console.log(err);
             return res.send(false);
