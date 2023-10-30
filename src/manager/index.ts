@@ -454,8 +454,8 @@ export default new class TwitchManager {
             this.tempChannelsNotified.add(`${streamer}.${data.channelId}`);
             this.notificationInThisSeason++;
 
-            const roleMention = data.roleId ? `<@&${data.roleId}>, ` : "";
-            const content = `${e.Notification} ${roleMention}${data.message ? data.message : messageDefault}`;
+            const roleMention = data.roleId ? data.roleId === data.guildId || data.roleId === "@everyone" ? "@everyone " : data.roleId === "@here" ? "@here " : data.roleId ? `<@&${data.roleId}>, ` : "" : "";
+            const content = `${e.Notification} ${roleMention}${data.message ? data.message.replace("$streamer", streamer).replace("$role", roleMention) : messageDefault}`;
 
             await rest.post(
                 Routes.channelMessages(data.channelId),
