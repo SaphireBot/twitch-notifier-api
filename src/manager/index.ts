@@ -308,11 +308,14 @@ export default new class TwitchManager {
     async refreshChannelNotified(streamer: string, channelsId: string[], notified: boolean) {
         if (!channelsId.length) return;
 
-        const dataToSet = channelsId.map(str => ({ [`notifiers.${str}.notified`]: notified }));
+        const data: Record<string, boolean> = {};
+
+        for (const channelId of channelsId)
+            data[`notifiers.${channelId}.notified`] = notified;
 
         return await Database.Twitch.findOneAndUpdate(
             { streamer },
-            { $set: dataToSet },
+            { $set: data },
             { new: true, upsert: true }
         )
             .then(document => {
