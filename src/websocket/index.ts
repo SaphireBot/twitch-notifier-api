@@ -15,6 +15,7 @@ export default async (socket: Socket) => {
     socket.on("active", async (data: UpdateStreamerParams, callback: CallbackType) => await active(data, callback));
     socket.on("disable", async (data: RemoveChannelParams, callback: CallbackType) => await disable(data, callback));
     socket.on("fetch", async (url: string, callback: CallbackType) => await fetch(url, callback));
+    socket.on("ping", (_: string, callback: CallbackType) => callback(true));
 
     socket.send(`[TWITCH WEBSOCKET] Socket ${socket.id} connected.`);
 };
