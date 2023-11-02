@@ -9,14 +9,17 @@ export default async function disable(req: Request, res: Response) {
         return res.send(false);
 
     const data = req.body as { streamer: string, channelId: string };
-    if (!data) return res.send(false);
+    if (
+        !data
+        || typeof data === "string"
+    ) return res.send(false);
 
     for (const key of ["streamer", "channelId"])
         if (!(key in data)) return res.send(false);
 
     TwitchManager.retryAfter.delete(`${data.streamer}.${data.channelId}`);
     TwitchManager.tempChannelsNotified.delete(`${data.streamer}.${data.channelId}`);
-    
+
     return await Database.Twitch.updateOne(
         { streamer: data.streamer },
         { $unset: { [`notifiers.${data.channelId}`]: true } },

@@ -4,7 +4,10 @@ import TwitchManager from "../manager";
 
 export default async (data: RemoveChannelParams, callback: CallbackType) => {
 
-    if (!data) return callback(false);
+    if (
+        !data
+        || typeof data === "string"
+    ) return callback(false);
 
     for (const key of ["streamer", "channelId"])
         if (!(key in data)) return callback(false);

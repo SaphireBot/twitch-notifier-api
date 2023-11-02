@@ -11,6 +11,7 @@ import disable from "./request/disable";
 import streamers from "./request/streamers";
 import getstreamers from "./request/get_streamers";
 import execFetch from "./request/fetch";
+import guildData from "./request/guilddata";
 
 const app = express();
 app.use(express.json());
@@ -26,6 +27,7 @@ app.post("/disable", disable);
 app.get("/streamers", streamers);
 app.get("/getstreamers", getstreamers);
 app.get("/fetch", execFetch);
+app.get("/guildData", guildData);
 app.get("/ping", (_, res) => res.sendStatus(200));
 
 server.listen(Number(env.SERVER_PORT || 8080), "0.0.0.0", connection);

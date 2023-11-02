@@ -3,6 +3,7 @@ import { env } from "process";
 import active from "./active";
 import disable from "./disable";
 import fetch from "./fetch";
+import guildData from "./guilddata";
 import { UpdateStreamerParams, CallbackType, RemoveChannelParams } from "../@types/twitch";
 
 export default async (socket: Socket) => {
@@ -16,6 +17,7 @@ export default async (socket: Socket) => {
     socket.on("disable", async (data: RemoveChannelParams, callback: CallbackType) => await disable(data, callback));
     socket.on("fetch", async (url: string, callback: CallbackType) => await fetch(url, callback));
     socket.on("ping", (_: string, callback: CallbackType) => callback(true));
+    socket.on("guildData", (guildId: string, callback: CallbackType) => guildData(guildId, callback));
 
     socket.send(`[TWITCH WEBSOCKET] Socket ${socket.id} connected.`);
 };

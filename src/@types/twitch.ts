@@ -73,6 +73,7 @@ export interface NotifierData {
     notified: boolean
     roleId: string | undefined
     message: string | undefined
+    streamer?: string
 }
 
 export interface RemoveChannelParams {
