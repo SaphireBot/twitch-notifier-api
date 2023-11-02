@@ -1,0 +1,15 @@
+{
+    "no_longer_online": "{{e.Notification}} | **{{streamer}}** ya no está en línea",
+    "is_live": "**{{stream.display_name}}** está en directo en Twitch.",
+    "no_title_defined": "No se ha definido ningún título",
+    "streaming": "📺 Transmitiendo **{{game}}**\n👥 {{viewers}} personas viendo ahora",
+    "adicional": "📝 Información adicional",
+    "adicional_data": "⏳ Lleva en línea desde {{online_data}}\n🗓️ Comenzó la transmisión: {{iniciated}}\n🏷️ Etiquetas: {{tags}}\n🔞 +18: {{mature}}\n💬 Idioma: {{languages}}",
+    "no_tag": "Sin etiquetas",
+    "yes": "Sí",
+    "no": "No",
+    "saphire_moon_twitch_notification": "Sistema de Notificación de Twitch - Saphire Moon",
+    "drop_clips": "Liberar Clips",
+    "game_undefined": "No se ha definido ningún juego",
+    "more_lives": "Más transmisiones de {{streamer}}"
+}

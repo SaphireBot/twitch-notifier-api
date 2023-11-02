@@ -3,16 +3,18 @@ import { FetchError, OauthToken, OauthValidade } from "../@types/twitch";
 import TwitchManager from "./index";
 import Database from "../database";
 
-export async function renewToken(num: 0 | 1 | 2): Promise<string | undefined | void> {
+export async function renewToken(num: 0 | 1 | 2 | 3 | undefined): Promise<string | undefined | void> {
+    if (typeof num !== "number") return;
 
     // https://dev.twitch.tv/docs/api/get-started/
-    if ([0, 2].includes(num)) await renew(env.TWITCH_CLIENT_ID, env.TWITCH_CLIENT_SECRET, "TwitchAccessToken");
-    if ([1, 2].includes(num)) await renew(env.TWITCH_CLIENT_ID_SECOND, env.TWITCH_CLIENT_SECRET_SECOND, "TwitchAccessTokenSecond");
+    if ([0, 3].includes(num)) await renew(env.TWITCH_CLIENT_ID, env.TWITCH_CLIENT_SECRET, "TwitchAccessToken");
+    if ([1, 3].includes(num)) await renew(env.TWITCH_CLIENT_ID_SECOND, env.TWITCH_CLIENT_SECRET_SECOND, "TwitchAccessTokenSecond");
+    if ([2, 3].includes(num)) await renew(env.TWITCH_CLIENT_ID_THIRD, env.TWITCH_CLIENT_SECRET_THIRD, "TwitchAccessTokenThird");
 
     return;
 }
 
-async function validate(accessToken: string, renewTokenNumberControl: 0 | 1 | 2) {
+async function validate(accessToken: string, renewTokenNumberControl: 0 | 1 | 2 | 3) {
     if (!accessToken) return;
 
     // https://dev.twitch.tv/docs/authentication/validate-tokens/#how-to-validate-a-token
@@ -39,7 +41,7 @@ async function validate(accessToken: string, renewTokenNumberControl: 0 | 1 | 2)
         });
 }
 
-async function renew(TWITCH_CLIENT_ID: string, TWITCH_CLIENT_SECRET: string, key: "TwitchAccessToken" | "TwitchAccessTokenSecond") {
+async function renew(TWITCH_CLIENT_ID: string, TWITCH_CLIENT_SECRET: string, key: "TwitchAccessToken" | "TwitchAccessTokenSecond" | "TwitchAccessTokenThird") {
 
     await fetch(
         `https://id.twitch.tv/oauth2/token?client_id=${TWITCH_CLIENT_ID}&client_secret=${TWITCH_CLIENT_SECRET}&grant_type=client_credentials`,
@@ -50,14 +52,16 @@ async function renew(TWITCH_CLIENT_ID: string, TWITCH_CLIENT_SECRET: string, key
     )
         .then(res => res.json())
         .then(async (data: OauthToken | FetchError) => {
+            console.log("TOKEN RENEWED", data);
 
             if ("status" in data)
-                return console.log("Fail to validate the token");
+                return console.log("Fail to validate the token", data);
 
             TwitchManager[key] = data.access_token;
             return await Database.Client.updateOne(
                 { id: env.SAPHIRE_ID },
-                { $set: { [key]: data.access_token } }
+                { $set: { [key]: data.access_token } },
+                { upsert: true }
             )
                 .then(() => data.access_token)
                 .catch(err => console.log("Function renewToken", err));
@@ -70,6 +74,7 @@ export async function checkAccessTokenAndStart() {
     // https://dev.twitch.tv/docs/authentication/validate-tokens/#how-to-validate-a-token
     validate(TwitchManager.TwitchAccessToken!, 0);
     validate(TwitchManager.TwitchAccessTokenSecond!, 1);
+    validate(TwitchManager.TwitchAccessTokenThird!, 2);
 
     TwitchManager.startCounter();
     TwitchManager.checkStreamersStatus();

@@ -1,0 +1,15 @@
+{
+    "no_longer_online": "{{e.Notification}} | **{{streamer}}** is no longer online",
+    "is_live": "**{{stream.display_name}}** is live on Twitch.",
+    "no_title_defined": "No title defined",
+    "streaming": "📺 Streaming **{{game}}**\n👥 {{viewers}} people watching now",
+    "adicional": "📝 Additional",
+    "adicional_data": "⏳ Has been online since {{online_data}}\n🗓️ Started the stream: {{iniciated}}\n🏷️ Tags: {{tags}}\n🔞 +18: {{mature}}\n💬 Language: {{languages}}",
+    "no_tag": "No tags",
+    "yes": "Yes",
+    "no": "No",
+    "saphire_moon_twitch_notification": "Twitch Notification System - Saphire Moon",
+    "drop_clips": "Release Clips",
+    "game_undefined": "No game defined",
+    "more_lives": "More streams from {{streamer}}"
+}

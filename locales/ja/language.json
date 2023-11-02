@@ -1,0 +1,15 @@
+{
+    "no_longer_online": "{{e.Notification}} | **{{streamer}}** はもうオフラインではありません",
+    "is_live": "**{{stream.display_name}}** はTwitchでライブ中です。",
+    "no_title_defined": "タイトルが定義されていません",
+    "streaming": "📺 **{{game}}** を配信中\n👥 {{viewers}} 人が視聴中",
+    "adicional": "📝 追加情報",
+    "adicional_data": "⏳ {{online_data}} からオンライン\n🗓️ 配信開始: {{iniciated}}\n🏷️ タグ: {{tags}}\n🔞 +18: {{mature}}\n💬 言語: {{languages}}",
+    "no_tag": "タグなし",
+    "yes": "はい",
+    "no": "いいえ",
+    "saphire_moon_twitch_notification": "Twitch通知システム - Saphire Moon",
+    "drop_clips": "クリップを公開",
+    "game_undefined": "ゲームが定義されていません",
+    "more_lives": "{{streamer}} の追加のライブ"
+}

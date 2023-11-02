@@ -8,9 +8,14 @@ declare namespace NodeJS {
         SAPHIRE_ID: string
         CANARY_ID: string
         MACHINE: string
+
         TWITCH_CLIENT_ID: string
         TWITCH_CLIENT_SECRET: string
+
         TWITCH_CLIENT_ID_SECOND: string
         TWITCH_CLIENT_SECRET_SECOND: string
+
+        TWITCH_CLIENT_ID_THIRD: string
+        TWITCH_CLIENT_SECRET_THIRD: string
     }
 }

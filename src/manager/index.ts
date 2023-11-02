@@ -1,10 +1,11 @@
 import { env } from "process";
 import Database from "../database";
-import { ButtonStyle, Collection, DiscordAPIError, REST, Routes, parseEmoji, time } from "discord.js";
+import { ButtonStyle, Collection, DiscordAPIError, REST, Routes, parseEmoji, time, APIGuild } from "discord.js";
 import { TwitchLanguages, emojis as e } from "../data.json";
 import { StreamData, NotifierData, UserData, } from "../@types/twitch";
 import { TwitchSchema } from "../database/twitch_model";
 import { renewToken, checkAccessTokenAndStart } from "./tokens";
+import { t } from "../translator";
 
 const rest = new REST().setToken(env.DISCORD_TOKEN);
 
@@ -13,18 +14,17 @@ export default new class TwitchManager {
     declare data: Collection<string, Record<string, NotifierData>>;
     declare TwitchAccessToken: string | undefined | void;
     declare TwitchAccessTokenSecond: string | undefined | void;
+    declare TwitchAccessTokenThird: string | undefined | void;
     declare streamersOnline: Map<string, StreamData>;
     declare streamersData: Map<string, UserData>;
+    declare guildsLocale: Map<string, string>;
     declare notificationInThisSeason: number;
     declare streamersQueueCheck: string[];
     channelsToIgnore = new Set<string>();
     tempChannelsNotified = new Set<string>();
     retryAfter = new Map<string, number>();
-    rateLimit: {
-        MaxLimit: number
-        remaining: number
-        inCheck: boolean,
-    };
+    sleepAccessTokens = new Set<string>();
+    lastAccessToken = "";
 
     constructor() {
         this.streamers = new Set();
@@ -33,19 +33,16 @@ export default new class TwitchManager {
         this.data = new Collection();
         this.TwitchAccessToken = undefined;
         this.TwitchAccessTokenSecond = undefined;
+        this.TwitchAccessTokenThird = undefined;
         this.notificationInThisSeason = 0;
         this.streamersQueueCheck = [];
-        this.rateLimit = {
-            MaxLimit: 800,
-            remaining: 800,
-            inCheck: false
-        };
+        this.guildsLocale = new Map();
     }
 
     async load(): Promise<any> {
         await this.setTokens();
-        if (!this.TwitchAccessToken && !this.TwitchAccessTokenSecond) await renewToken(2);
-        if (!this.TwitchAccessToken && !this.TwitchAccessTokenSecond) return this.exit("Twitch Access Token not found");
+        if (this.tokensIsUndefined) await renewToken(3);
+        if (this.tokensIsUndefined) return this.exit("Twitch Access Token not found");
 
         this.streamers = new Set(Array.from(this.data.keys()));
         this.streamersQueueCheck = Array.from(this.streamers);
@@ -53,55 +50,64 @@ export default new class TwitchManager {
         return checkAccessTokenAndStart();
     }
 
+    get tokensIsUndefined() {
+        return !this.TwitchAccessToken && !this.TwitchAccessTokenSecond && !this.TwitchAccessTokenThird;
+    }
+
     async setTokens(): Promise<void> {
         const data = await Database.Client.findOne({ id: env.SAPHIRE_ID });
         this.TwitchAccessToken = data?.TwitchAccessToken;
         this.TwitchAccessTokenSecond = data?.TwitchAccessTokenSecond;
+        this.TwitchAccessTokenThird = data?.TwitchAccessTokenThird;
         return;
     }
 
-    async fetcher<T = unknown>(url: string): Promise<"TIMEOUT" | [] | undefined | T> {
+    async fetcher<T = unknown>(url: string): Promise<{ message: "string" } | any[] | undefined | T | any> {
 
-        if (!url || (!this.TwitchAccessToken && !this.TwitchAccessTokenSecond)) return;
+        if (!url || this.tokensIsUndefined) return;
 
         return new Promise(resolve => {
-
-            if (this.rateLimit.inCheck) return resolve("TIMEOUT");
-
-            this.rateLimit.remaining--;
-            if (
-                this.rateLimit.inCheck
-                || this.rateLimit.remaining < 70
-            ) {
-                this.checkRatelimit(this.rateLimit.remaining);
-                return resolve("TIMEOUT");
-            }
 
             let timedOut = false;
             const timeout = setTimeout(() => {
                 timedOut = true;
-                return resolve([]);
-            }, 2000);
+                return resolve({ message: "Timed out" });
+            }, 5000);
 
             const headers = this.randomHeadersAutorization;
-            fetch(url, { method: "GET", headers })
+            if (!headers?.Authorization) return resolve({ message: "No headers access token available, try again" });
+
+            if (this.sleepAccessTokens.has(headers.Authorization!))
+                return resolve({ message: "Try again" });
+
+            fetch(url, {
+                method: "GET",
+                headers: {
+                    authorization: `Bearer ${headers.Authorization}`,
+                    "Client-Id": headers["Client-Id"]
+                }
+            })
                 .then(res => {
                     if (timedOut) return;
                     clearTimeout(timeout);
 
-                    if (res.status === 429 || this.rateLimit.inCheck) // Rate limit exceeded
-                        return resolve("TIMEOUT");
-
-                    this.rateLimit.MaxLimit = Number(res.headers.get("ratelimit-limit"));
                     const remaining = Number(res.headers.get("ratelimit-remaining"));
 
-                    if (remaining >= 70)
-                        this.rateLimit.remaining = Number(res.headers.get("ratelimit-remaining"));
+                    if (remaining < 50) {
+                        this.sleepAccessTokens.add(headers.Authorization!);
+                        setTimeout(() => this.sleepAccessTokens.delete(headers.Authorization!), 1000 * 30);
+                    }
 
-                    if (this.rateLimit.remaining < 70)
-                        this.checkRatelimit(this.rateLimit.remaining);
+                    if (res.status === 429 || remaining < 40) {  // Rate limit exceeded
+                        this.sleepAccessTokens.add(headers.Authorization!);
+                        setTimeout(() => this.sleepAccessTokens.delete(headers.Authorization!), 1000 * 30);
+                        return resolve({ message: "TIMEOUT" });
+                    }
 
-                    if (res.status === 400) return resolve([]);
+                    if (res.status === 400) {
+                        console.log(res);
+                        return resolve({ message: "Status 400", res: res.json() });
+                    }
 
                     return res.json();
                 })
@@ -109,19 +115,21 @@ export default new class TwitchManager {
 
                     if (!res) return;
 
+                    if (res.message === "Client ID and OAuth token do not match") {
+                        await renewToken(this.accessTokenID(headers.Authorization!));
+                        return resolve({ message: "Client ID and OAuth token do not match" });
+                    }
+
                     if (res.status === 401) { // Unauthorized                         
                         console.log("TWITCH BAD REQUEST - At Fetcher Function 2", res, url);
-                        return resolve([]);
+                        return resolve({ message: "Twitch Bad Request", res, url });
                     }
 
                     if (res.message === "invalid access token") {
-                        this.rateLimit.inCheck = true;
-                        resolve([]);
-
-                        await renewToken(headers.Authorization.replace("Bearer ", "") === this.TwitchAccessToken ? 1 : 2);
-                        if (!this.TwitchAccessToken && !this.TwitchAccessTokenSecond) {
-                            return this.exit("TwitchAccessToken missing");
-                        }
+                        // this.rateLimit.inCheck = true;
+                        resolve({ message: "invalid access token" });
+                        await renewToken(this.accessTokenID(headers.Authorization!));
+                        if (this.tokensIsUndefined) return this.exit("TwitchAccessToken missing");
 
                         return;
                     }
@@ -131,7 +139,7 @@ export default new class TwitchManager {
                 })
                 .catch(err => {
                     clearTimeout(timeout);
-                    resolve([]);
+                    resolve({ message: "Error", err });
 
                     if (
                         [
@@ -141,64 +149,17 @@ export default new class TwitchManager {
                         return;
 
                     console.log("TWITCH MANAGER FETCH ERROR - At Fetcher Function 3", err, url);
-                    return resolve([]);
+                    return;
                 });
         });
     }
 
-    async checkRatelimit(remaining: number) {
-
-        if (remaining > 780) {
-            this.rateLimit.inCheck = false;
-            return;
-        }
-
-        if (this.rateLimit.inCheck) return;
-        this.rateLimit.inCheck = true;
-
-        const check = await this.check();
-        if (check) return;
-
-        const interval = setInterval(async () => {
-            const check = await this.check();
-            if (check) {
-                this.rateLimit.inCheck = false;
-                clearInterval(interval);
-                return;
-            }
-        }, 1000 * 5);
-        return;
-    }
-
-    async check(): Promise<boolean> {
-
-        return await fetch("https://api.twitch.tv/helix/users?login=alanzoka", { // Top One of Brazil
-            method: "GET",
-            headers: {
-                Authorization: `Bearer ${this.TwitchAccessToken}`,
-                "Client-Id": `${env.TWITCH_CLIENT_ID}`
-            }
-        })
-            .then(res => {
-                this.rateLimit.remaining = Number(res.headers.get("ratelimit-remaining"));
-                console.log("CHECKING - Check Rate Limit Function", this.rateLimit.remaining);
-                if (this.rateLimit.remaining > (this.rateLimit.MaxLimit - 20))
-                    this.rateLimit.inCheck = false;
-
-                return this.rateLimit.remaining > (this.rateLimit.MaxLimit - 20);
-            })
-            .catch(err => {
-
-                if (
-                    [
-                        "UND_ERR_CONNECT_TIMEOUT"
-                    ].includes(err?.code)
-                )
-                    return false;
-
-                console.log("TWITCH MANAGER FETCH ERROR - Check Rate Limit Function", err);
-                return false;
-            });
+    accessTokenID(accessToken: string) {
+        return {
+            [`${this.TwitchAccessToken}`]: 1,
+            [`${this.TwitchAccessTokenSecond}`]: 2,
+            [`${this.TwitchAccessTokenThird}`]: 3,
+        }[accessToken] as 1 | 2 | 3;
     }
 
     async startCounter() {
@@ -225,7 +186,7 @@ export default new class TwitchManager {
 
         if (streamers?.length) {
             const streamersStreamStatus = await this.fetcher<StreamData[]>(`https://api.twitch.tv/helix/streams?${streamers.map(str => `user_login=${str}`).join("&")}`);
-            if (streamersStreamStatus !== "TIMEOUT" && Array.isArray(streamersStreamStatus)) {
+            if (!streamersStreamStatus?.message && Array.isArray(streamersStreamStatus)) {
                 this.treatStreamersOffline(streamers.filter(streamer => !streamersStreamStatus.some(d => d.user_login === streamer)));
                 this.treatStreamersOnline(streamersStreamStatus);
             }
@@ -277,7 +238,7 @@ export default new class TwitchManager {
         if (!streamers?.length) return;
 
         const documents: TwitchSchema[] = await Database.Twitch.find({ streamer: { $in: streamers } });
-        const notifierData: Record<string, string[]> = {};
+        const notifierData: Record<string, { channelId: string, guildId: string }[]> = {};
 
         for await (const doc of documents) {
             this.streamersOnline.delete(doc.streamer!);
@@ -290,16 +251,20 @@ export default new class TwitchManager {
             let notifiers: NotifierData[] = Object.values(doc.notifiers as NotifierData);
             notifiers = notifiers?.filter(d => d.notified);
 
-            for (const data of notifiers) {
+            for await (const data of notifiers) {
+                if (!this.guildsLocale.has(data.guildId)) {
+                    this.guildsLocale.set(data.guildId, await this.getGuildLocale(data.guildId));
+                }
+
                 notifierData[doc.streamer]
-                    ? notifierData[doc.streamer].push(data.channelId)
-                    : notifierData[doc.streamer] = [data.channelId];
+                    ? notifierData[doc.streamer].push({ channelId: data.guildId, guildId: data.guildId })
+                    : notifierData[doc.streamer] = [{ channelId: data.guildId, guildId: data.guildId }];
             }
 
         }
 
-        for (const [streamer, channelsId] of Object.entries(notifierData))
-            this.refreshChannelNotified(streamer, channelsId, false);
+        for (const [streamer, _] of Object.entries(notifierData))
+            this.refreshChannelNotified(streamer, Object.values(notifierData).map(d => d[0].channelId).flat(), false);
 
         this.notifyOfflineStreamersChannels(notifierData);
         return;
@@ -313,7 +278,7 @@ export default new class TwitchManager {
         for (const channelId of channelsId)
             data[`notifiers.${channelId}.notified`] = notified;
 
-        return await Database.Twitch.findOneAndUpdate(
+        await Database.Twitch.findOneAndUpdate(
             { streamer },
             { $set: data },
             { new: true, upsert: true }
@@ -323,6 +288,8 @@ export default new class TwitchManager {
                 if (doc?.streamer) this.data.set(doc?.streamer, doc?.notifiers);
             })
             .catch(console.log);
+
+        return;
     }
 
     async getStreamersData(streamers: string[]) {
@@ -338,7 +305,7 @@ export default new class TwitchManager {
         }
 
         const response = await this.fetcher<UserData[]>(`https://api.twitch.tv/helix/users?${toFetchUncachedStreamer.filter(Boolean).slice(0, 100).map(str => `login=${str}`).join("&")}`);
-        if (response === "TIMEOUT" || !response?.length) return [];
+        if (response?.message || !response?.length) return [];
 
         for (const data of response) {
             this.streamersData.set(data.login, data);
@@ -349,7 +316,7 @@ export default new class TwitchManager {
         return streamersData;
     }
 
-    async notifyOfflineStreamersChannels(offlineStreamers: Record<string, string[]>) {
+    async notifyOfflineStreamersChannels(offlineStreamers: Record<string, { channelId: string, guildId: string }[]>) {
 
         const data = Object.entries(offlineStreamers);
         if (!data?.length) return;
@@ -367,7 +334,7 @@ export default new class TwitchManager {
 
             const offlineImage = data?.offline_image_url || null;
 
-            for await (const channelId of channels) {
+            for await (const { channelId, guildId } of channels) {
                 if (this.channelsToIgnore.has(channelId)) continue;
                 this.tempChannelsNotified.delete(`${streamer}.${channelId}`);
 
@@ -377,22 +344,24 @@ export default new class TwitchManager {
                     this.retryAfter.delete(`${streamer}.${channelId}`);
                 }
 
+                const locale = await this.getGuildLocale(guildId);
+
                 await rest.post(
                     Routes.channelMessages(channelId),
                     {
                         body: {
-                            content: offlineImage ? null : `<a:bell:1066521641422700595> | **${streamer}** não está mais online.`,
+                            content: offlineImage ? null : t("no_longer_online", { e, streamer, locale }),
                             embeds: offlineImage
                                 ? [{
                                     color: 0x9c44fb, /* Twitch's Logo Purple */
                                     author: {
-                                        name: `${data.display_name || streamer} não está mais online.`,
+                                        name: t("no_longer_online", { e, streamer: data.display_name || streamer, locale }),
                                         icon_url: data.profile_image_url as string,
                                         url: `https://www.twitch.tv/${streamer}`
                                     },
                                     image: { url: offlineImage },
                                     footer: {
-                                        text: "Saphire Moon's Twitch Notification System [API]",
+                                        text: t("saphire_moon_twitch_notification", locale),
                                         icon_url: "https://freelogopng.com/images/all_img/1656152623twitch-logo-round.png",
                                     }
                                 }]
@@ -401,7 +370,7 @@ export default new class TwitchManager {
                                 type: 1,
                                 components: [{
                                     type: 2,
-                                    label: `Mais lives de ${streamer}`.slice(0, 80),
+                                    label: t("more_lives", { locale, streamer }).slice(0, 80),
                                     emoji: parseEmoji("🎬"),
                                     custom_id: JSON.stringify({ c: "twitch", src: "oldLive", streamerId: data.id }),
                                     style: ButtonStyle.Primary
@@ -427,12 +396,10 @@ export default new class TwitchManager {
         const channelsData = Object.values(document.notifiers || {}) as NotifierData[];
         if (!channelsData?.length) return;
 
-        const game = stream.game_name ? `${stream.game_name} \`${stream.game_id}\`` : "Nenhum jogo foi definido";
         const avatar = stream.profile_image_url;
         const viewers = `\`${this.num(stream.viewer_count || 0)}\``;
         const imageUrl = stream.thumbnail_url?.replace("{width}x{height}", "620x378") || null;
         const url = `https://www.twitch.tv/${streamer}`;
-        const messageDefault = `**${stream.display_name}** está em live na Twitch.`;
         const date = new Date(stream.started_at);
         const dataToSet: Record<string, boolean> = {};
 
@@ -454,6 +421,9 @@ export default new class TwitchManager {
             this.tempChannelsNotified.add(`${streamer}.${data.channelId}`);
             this.notificationInThisSeason++;
 
+            const locale = await this.getGuildLocale(data.guildId);
+            const messageDefault = t("is_live", { stream, locale });
+            const game = stream.game_name ? `${stream.game_name} \`${stream.game_id}\`` : t("game_undefined", locale);
             const roleMention = data.roleId ? data.roleId === data.guildId || data.roleId === "@everyone" ? "@everyone " : data.roleId === "@here" ? "@here " : data.roleId ? `<@&${data.roleId}>, ` : "" : "";
             const content = `${e.Notification} ${roleMention}${data.message ? data.message.replace("$streamer", streamer).replace("$role", roleMention) : messageDefault}`;
 
@@ -464,7 +434,7 @@ export default new class TwitchManager {
                         content,
                         embeds: [{
                             color: 0x9C44FB, // Twitch's Logo Purple
-                            title: stream.title?.slice(0, 256) || "Nenhum título foi definido",
+                            title: stream.title?.slice(0, 256) || t("no_title_defined", locale),
                             author: {
                                 name: stream.user_name || "??",
                                 icon_url: avatar,
@@ -472,16 +442,23 @@ export default new class TwitchManager {
                             },
                             url,
                             thumbnail: { url: avatar as string },
-                            description: `📺 Transmitindo **${game}**\n👥 ${viewers} pessoas assistindo agora`,
+                            description: t("streaming", { game, viewers, locale }),
                             fields: [
                                 {
-                                    name: "📝 Adicional",
-                                    value: `⏳ Está online ${time(date, "R")}\n🗓️ Iniciou a live: ${this.datecomplete(stream.started_at)}\n🏷️ Tags: ${stream.tags?.map((tag: string) => `\`${tag}\``)?.join(", ") || "Nenhuma tag"}\n🔞 +18: ${stream.is_mature ? "Sim" : "Não"}\n💬 Idioma: ${this.getTwitchLanguages(stream.language)}`
+                                    name: t("adicional", locale),
+                                    value: t("adicional_data", {
+                                        locale,
+                                        online_data: time(date, "R"),
+                                        iniciated: this.datecomplete(stream.started_at),
+                                        tags: stream.tags?.map((tag: string) => `\`${tag}\``)?.join(", ") || t("no_tag", locale),
+                                        mature: stream.is_mature ? t("yes", locale) : t("no", locale),
+                                        languages: this.getTwitchLanguages(stream.language)
+                                    })
                                 }
                             ],
                             image: { url: imageUrl as string },
                             footer: {
-                                text: "Saphire Moon's Twitch Notification System [API]",
+                                text: t("saphire_moon_twitch_notification", locale),
                                 icon_url: "https://freelogopng.com/images/all_img/1656152623twitch-logo-round.png"
                             }
                         }],
@@ -489,7 +466,7 @@ export default new class TwitchManager {
                             type: 1,
                             components: [{
                                 type: 2,
-                                label: "Liberar Clips",
+                                label: t("drop_clips", locale),
                                 emoji: parseEmoji("🔒"),
                                 custom_id: JSON.stringify({ c: "twitch", src: "clips", streamerId: stream.user_id }),
                                 style: ButtonStyle.Primary
@@ -512,6 +489,18 @@ export default new class TwitchManager {
 
         this.data.set(refreshData.streamer!, refreshData.notifiers);
         return;
+    }
+
+    async getGuildLocale(guildId: string) {
+        let locale = this.guildsLocale.get(guildId);
+
+        if (!locale) {
+            const guildData = await rest.get(Routes.guild(guildId)).catch(() => { }) as APIGuild;
+            locale = guildData.preferred_locale || "en-US";
+            this.guildsLocale.set(guildId, locale);
+        }
+
+        return locale;
     }
 
     errorToPostMessage(err: DiscordAPIError | any, streamer: string, channelId: string, guildId: string | undefined, data: NotifierData | UserData | null) {
@@ -587,11 +576,13 @@ export default new class TwitchManager {
 
     getAllNotifersFromThisGuild(guildId: string) {
         return this.data
-            .toJSON()
             .filter(v => Object.values(v || {})?.[0]?.guildId === guildId)
-            .map(v => Object.values(v || {})?.[0])
-            .flat()
-            || [];
+            .map((notifier, streamer) => {
+                const data = Object.values(notifier);
+                data[0].streamer = streamer;
+                return data;
+            })
+            .flat();
     }
 
     num(num: number): string {
@@ -608,16 +599,27 @@ export default new class TwitchManager {
     }
 
     get randomHeadersAutorization() {
-        return [
+        const headers = [
             {
-                Authorization: `Bearer ${this.TwitchAccessToken}`,
+                Authorization: this.TwitchAccessToken,
                 "Client-Id": `${env.TWITCH_CLIENT_ID}`
             },
             {
-                Authorization: `Bearer ${this.TwitchAccessTokenSecond}`,
+                Authorization: this.TwitchAccessTokenSecond,
                 "Client-Id": `${env.TWITCH_CLIENT_ID_SECOND}`
+            },
+            {
+                Authorization: this.TwitchAccessTokenThird,
+                "Client-Id": `${env.TWITCH_CLIENT_ID_THIRD}`
             }
-        ][Math.floor(Math.random() * 2)];
+        ]
+            .filter(h => !this.sleepAccessTokens.has(h.Authorization!) && (this.lastAccessToken !== h.Authorization!));
+
+        const result = headers[Math.floor(Math.random() * headers.length)];
+        if (!result?.Authorization) return;
+
+        this.lastAccessToken = result.Authorization!;
+        return result;
     }
 
     exit(message: string) {

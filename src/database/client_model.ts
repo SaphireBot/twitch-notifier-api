@@ -4,6 +4,7 @@ const ClientSchema = new Schema({
     id: { type: String, unique: true },
     TwitchAccessToken: { type: String, unique: true },
     TwitchAccessTokenSecond: { type: String, unique: true },
+    TwitchAccessTokenThird: { type: String, unique: true },
     uptime: {
         primary: Date,
         accumulate: Number
