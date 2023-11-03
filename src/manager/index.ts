@@ -87,7 +87,7 @@ export default new class TwitchManager {
                     "Client-Id": headers["Client-Id"]
                 }
             })
-                .then(res => {
+                .then(async res => {
                     if (timedOut) return;
                     clearTimeout(timeout);
 
@@ -105,8 +105,8 @@ export default new class TwitchManager {
                     }
 
                     if (res.status === 400) {
-                        console.log(res);
-                        return resolve({ message: "Status 400", res: res.json() });
+                        console.log(res.json().then(r => r), headers, url);
+                        return resolve({ message: "Status 400", res: await res.json() });
                     }
 
                     return res.json();
@@ -304,6 +304,8 @@ export default new class TwitchManager {
                 : toFetchUncachedStreamer.push(streamer);
         }
 
+        if (!toFetchUncachedStreamer?.length) return [];
+
         const response = await this.fetcher<UserData[]>(`https://api.twitch.tv/helix/users?${toFetchUncachedStreamer.filter(Boolean).slice(0, 100).map(str => `login=${str}`).join("&")}`);
         if (response?.message || !response?.length) return [];
 
@@ -496,7 +498,7 @@ export default new class TwitchManager {
 
         if (!locale) {
             const guildData = await rest.get(Routes.guild(guildId)).catch(() => { }) as APIGuild;
-            locale = guildData.preferred_locale || "en-US";
+            locale = guildData?.preferred_locale || "en-US";
             this.guildsLocale.set(guildId, locale);
         }
 
