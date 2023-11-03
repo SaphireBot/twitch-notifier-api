@@ -5,6 +5,7 @@ import disable from "./disable";
 import fetch from "./fetch";
 import guildData from "./guilddata";
 import { UpdateStreamerParams, CallbackType, RemoveChannelParams } from "../@types/twitch";
+import TwitchManager from "../manager";
 
 export default async (socket: Socket) => {
 
@@ -18,6 +19,13 @@ export default async (socket: Socket) => {
     socket.on("fetch", async (url: string, callback: CallbackType) => await fetch(url, callback));
     socket.on("ping", (_: string, callback: CallbackType) => callback(true));
     socket.on("guildData", (guildId: string, callback: CallbackType) => guildData(guildId, callback));
+    
+    socket.on("preferredLocale", (data: { guildId: string, locale: string }) => TwitchManager.guildsLocale.set(data.guildId, data.locale));
+
+    socket.on("guildsPreferredLocale", (data: { guildId: string, locale: string }[]) => {
+        for (const { guildId, locale } of data)
+            TwitchManager.guildsLocale.set(guildId, locale);
+    });
 
     socket.send(`[TWITCH WEBSOCKET] Socket ${socket.id} connected.`);
 };
