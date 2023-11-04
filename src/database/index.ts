@@ -1,9 +1,10 @@
 import { connect, set } from "mongoose";
-import TwitchModel from "./twitch_model";
+import TwitchModel, { TwitchSchema } from "./twitch_model";
 import ClientModel from "./client_model";
 import { env } from "process";
 import TwitchManager from "../manager";
 import { NotifierData } from "../@types/twitch";
+import { Collection } from "discord.js";
 
 export default new class Database {
     Twitch = TwitchModel;
@@ -49,14 +50,27 @@ export default new class Database {
         const documentId = new Map<string, string>();
 
         return TwitchModel.watch()
-            .on("change", async (change) => {
+            .on("change", async(change) => {
 
-                if (["update", "insert"].includes(change.operationType)) {
+                if (["invalidate"].includes(change.operationType)) return;
+
+                if (change.operationType === "drop")
+                    return TwitchManager.data = new Collection();
+
+                if (change.operationType === "insert") {
+                    const document = change.fullDocument as TwitchSchema;
+                    if (!document.streamer) return;
+                    TwitchManager.data.set(document.streamer, document.notifiers || {});
+                }
+
+                if (change.operationType === "update") {
+
+                    const documentIdObjectToString = change.documentKey._id.toString() as string;
 
                     if (ids.size)
-                        return ids.add(change.documentKey._id);
+                        return ids.add(documentIdObjectToString);
 
-                    ids.add(change.documentKey._id);
+                    ids.add(documentIdObjectToString);
                     setTimeout(async () => {
                         if (!ids.size) return;
                         const allDocumentsId = Array.from(ids);
@@ -68,17 +82,18 @@ export default new class Database {
                                 TwitchManager.data.set(doc.streamer, doc.notifiers);
                                 for (const data of Object.values(doc.notifiers as NotifierData[]))
                                     TwitchManager.tempChannelsNotified.delete(`${doc.streamer}.${data.channelId}`);
-                                documentId.set(doc._id.toString(), doc.streamer);
+                                documentId.set(documentIdObjectToString, doc.streamer);
                             }
                     }, 1000);
                     return;
                 }
 
                 if (change.operationType === "delete") {
-                    const streamerKey = documentId.get(change.documentKey._id.toString());
-                    if (!streamerKey) return;
-                    documentId.delete(change.documentKey._id.toString());
-                    return TwitchManager.data.delete(streamerKey);
+                    const documentId = change.documentKey._id.toString();
+                    const streamer = documentId.get(documentId);
+                    if (!streamer) return;
+                    documentId.delete(documentId);
+                    return TwitchManager.data.delete(streamer);
                 }
 
             });
