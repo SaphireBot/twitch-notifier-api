@@ -1,8 +1,9 @@
 import { Request, Response } from "express";
 import TwitchManager from "../manager";
 import { env } from "process";
+import Database from "../database";
 
-export default function data(req: Request, res: Response) {
+export default async function data(req: Request, res: Response) {
 
     if (req.headers.authorization !== env.TWITCH_CLIENT_SECRET)
         return res.send({
@@ -18,6 +19,7 @@ export default function data(req: Request, res: Response) {
         });
 
     const streamers = Array.from(TwitchManager.data.keys()).filter(Boolean);
+    const client = await Database.Client.findOne({ id: env.SAPHIRE_ID });
     
     return res.json({
         streamers: {
@@ -27,7 +29,7 @@ export default function data(req: Request, res: Response) {
             offline: streamers.filter(str => !TwitchManager.streamersOnline.has(str)),
         },
         guildsId: Array.from(TwitchManager.guilds).filter(Boolean),
-        notifications: TwitchManager.notificationsCount,
+        notifications: client?.TwitchNotifications || 0,
         requests: TwitchManager.requests
     });
 }
