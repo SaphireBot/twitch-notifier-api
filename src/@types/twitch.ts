@@ -38,6 +38,7 @@ export interface StreamData {
     is_mature: boolean,
     profile_image_url: string | undefined
     display_name: string | undefined
+    message?: string
 }
 
 export interface StreamsDataResponse {

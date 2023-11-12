@@ -47,8 +47,10 @@ export default new class Database {
             }
             TwitchManager.data.set(d.streamer, d.notifiers);
 
-            for (const n of Object.values(d.notifiers) as NotifierData[])
+            for (const n of Object.values(d.notifiers) as NotifierData[]) {
+                if (!n.guildId) continue;
                 TwitchManager.guilds.add(n.guildId);
+            }
         }
 
         return true;

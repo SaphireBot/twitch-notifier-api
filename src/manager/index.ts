@@ -198,8 +198,8 @@ export default new class TwitchManager {
         }
 
         if (streamers?.length) {
-            const streamersStreamStatus = await this.fetcher<StreamData[]>(`https://api.twitch.tv/helix/streams?${streamers.map(str => `user_login=${str}`).join("&")}`);
-            if (!streamersStreamStatus?.message && Array.isArray(streamersStreamStatus)) {
+            const streamersStreamStatus = await this.fetcher<StreamData[]>(`https://api.twitch.tv/helix/streams?${streamers.map(str => `user_login=${str}`).join("&")}`) as StreamData[];
+            if (!("message" in streamersStreamStatus) && Array.isArray(streamersStreamStatus)) {
                 this.treatStreamersOffline(streamers.filter(streamer => !streamersStreamStatus.some(d => d.user_login === streamer)));
                 this.treatStreamersOnline(streamersStreamStatus);
             }
