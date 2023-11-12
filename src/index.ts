@@ -12,6 +12,7 @@ import streamers from "./request/streamers";
 import getstreamers from "./request/get_streamers";
 import execFetch from "./request/fetch";
 import guildData from "./request/guilddata";
+import data from "./request/data";
 
 const app = express();
 app.use(express.json());
@@ -29,6 +30,7 @@ app.get("/getstreamers", getstreamers);
 app.get("/fetch", execFetch);
 app.get("/guildData", guildData);
 app.get("/ping", (_, res) => res.sendStatus(200));
+app.get("/data", data);
 
 server.listen(Number(env.SERVER_PORT || 8080), "0.0.0.0", connection);
 

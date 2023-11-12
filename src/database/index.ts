@@ -24,9 +24,15 @@ export default new class Database {
                 return process.exit();
             });
 
-        if (!response) return;
+        if (!response) {
+            console.log("Database Not Connect");
+            return process.exit();
+        }
+
+        const clientData = await this.Client.findOne({ id: env.SAPHIRE_ID });
 
         await this.refresh();
+        TwitchManager.notificationsCount = clientData?.TwitchNotifications || 0;
         TwitchManager.load();
         this.watch();
         return;
@@ -40,6 +46,9 @@ export default new class Database {
                 continue;
             }
             TwitchManager.data.set(d.streamer, d.notifiers);
+
+            for (const n of Object.values(d.notifiers) as NotifierData[])
+                TwitchManager.guilds.add(n.guildId);
         }
 
         return true;
@@ -50,7 +59,7 @@ export default new class Database {
         const documentId = new Map<string, string>();
 
         return TwitchModel.watch()
-            .on("change", async(change) => {
+            .on("change", async (change) => {
 
                 if (["invalidate"].includes(change.operationType)) return;
 

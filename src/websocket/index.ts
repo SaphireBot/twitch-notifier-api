@@ -6,6 +6,7 @@ import fetch from "./fetch";
 import guildData from "./guilddata";
 import { CallbackType } from "../@types/twitch";
 import TwitchManager from "../manager";
+import data from "./data";
 
 export default async (socket: Socket) => {
 
@@ -19,6 +20,7 @@ export default async (socket: Socket) => {
     socket.on("fetch", fetch);
     socket.on("ping", (_, callback: CallbackType) => callback(true));
     socket.on("guildData", guildData);
+    socket.on("data", data);
 
     socket.on("preferredLocale", (data: { guildId: string, locale: string }) => TwitchManager.guildsLocale.set(data.guildId, data.locale));
 

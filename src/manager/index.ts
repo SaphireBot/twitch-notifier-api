@@ -20,6 +20,9 @@ export default new class TwitchManager {
     declare guildsLocale: Map<string, string>;
     declare notificationInThisSeason: number;
     declare streamersQueueCheck: string[];
+    requests = 0;
+    notificationsCount = 0;
+    guilds = new Set<string>();
     channelsToIgnore = new Set<string>();
     tempChannelsNotified = new Set<string>();
     retryAfter = new Map<string, number>();
@@ -66,19 +69,23 @@ export default new class TwitchManager {
 
         if (!url || this.tokensIsUndefined) return;
 
+        this.requests++;
         return new Promise(resolve => {
 
             let timedOut = false;
             const timeout = setTimeout(() => {
                 timedOut = true;
+                this.requests--;
                 return resolve({ message: "Timed out" });
             }, 5000);
 
             const headers = this.randomHeadersAutorization;
             if (!headers?.Authorization) return resolve({ message: "No headers access token available, try again" });
 
-            if (this.sleepAccessTokens.has(headers.Authorization!))
+            if (this.sleepAccessTokens.has(headers.Authorization!)) {
+                this.requests--;
                 return resolve({ message: "Try again" });
+            }
 
             fetch(url, {
                 method: "GET",
@@ -101,11 +108,13 @@ export default new class TwitchManager {
                     if (res.status === 429 || remaining < 40) {  // Rate limit exceeded
                         this.sleepAccessTokens.add(headers.Authorization!);
                         setTimeout(() => this.sleepAccessTokens.delete(headers.Authorization!), 1000 * 30);
+                        this.requests--;
                         return resolve({ message: "TIMEOUT" });
                     }
 
                     if (res.status === 400) {
                         console.log(res.json().then(r => r), headers, url);
+                        this.requests--;
                         return resolve({ message: "Status 400", res: await res.json() });
                     }
 
@@ -117,16 +126,18 @@ export default new class TwitchManager {
 
                     if (res.message === "Client ID and OAuth token do not match") {
                         await renewToken(this.accessTokenID(headers.Authorization!));
+                        this.requests--;
                         return resolve({ message: "Client ID and OAuth token do not match" });
                     }
 
                     if (res.status === 401) { // Unauthorized                         
                         console.log("TWITCH BAD REQUEST - At Fetcher Function 2", res, url);
+                        this.requests--;
                         return resolve({ message: "Twitch Bad Request", res, url });
                     }
 
                     if (res.message === "invalid access token") {
-                        // this.rateLimit.inCheck = true;
+                        this.requests--;
                         resolve({ message: "invalid access token" });
                         await renewToken(this.accessTokenID(headers.Authorization!));
                         if (this.tokensIsUndefined) return this.exit("TwitchAccessToken missing");
@@ -134,11 +145,13 @@ export default new class TwitchManager {
                         return;
                     }
 
+                    this.requests--;
                     if (url.includes("/followers")) return resolve(res.total);
                     return resolve(res.data || []);
                 })
                 .catch(err => {
                     clearTimeout(timeout);
+                    this.requests--;
                     resolve({ message: "Error", err });
 
                     if (
@@ -422,6 +435,7 @@ export default new class TwitchManager {
             if (this.tempChannelsNotified.has(`${streamer}.${data.channelId}`)) continue;
             this.tempChannelsNotified.add(`${streamer}.${data.channelId}`);
             this.notificationInThisSeason++;
+            this.notificationsCount++;
 
             const locale = await this.getGuildLocale(data.guildId);
             const messageDefault = t("is_live", { stream, locale });
@@ -505,21 +519,21 @@ export default new class TwitchManager {
         return locale;
     }
 
-    errorToPostMessage(err: DiscordAPIError | any, streamer: string, channelId: string, guildId: string | undefined, data: NotifierData | UserData | null) {
+    async errorToPostMessage(err: DiscordAPIError | any, streamer: string, channelId: string, guildId: string | undefined, data: NotifierData | UserData | null) {
+
+        if (!channelId)
+            return await this.removeChannel(streamer, channelId);
+
         if (!err) return;
         this.tempChannelsNotified.delete(`${streamer}.${channelId}`);
 
         // Unknown Guild
-        if (err.code === 10004) {
-            this.removeAllNotifiersFromThisGuild(guildId!);
-            return;
-        }
+        if (err.code === 10004)
+            return await this.removeAllNotifiersFromThisGuild(guildId!);
 
         // Unknown Channel
-        if (err.code === 10003) {
-            this.removeAllChannelsFromDatabase(channelId);
-            return;
-        }
+        if (err.code === 10003)
+            return await this.removeAllChannelsFromDatabase(channelId);
 
         // Missing Access
         if (err.code === 50001) {
@@ -528,7 +542,7 @@ export default new class TwitchManager {
             return;
         }
 
-        console.log(err, data);
+        return console.log(err, data);
     }
 
     async removeAllNotifiersFromThisGuild(guildId: string) {

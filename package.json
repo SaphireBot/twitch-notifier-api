@@ -4,10 +4,9 @@
   "description": "just another API from Saphire Moon",
   "main": "out/index.js",
   "scripts": {
-    "watch": "tsc -w",
+    "compiler": "tsc -w",
     "start": "node .",
-    "build": "tsc",
-    "test": "tsc && cross-env NODE_OPTIONS=--experimental-vm-modules NODE_NO_WARNINGS=1 jest"
+    "build": "tsc"
   },
   "repository": {
     "type": "git",

@@ -36,6 +36,7 @@ export default async function active(req: Request, res: Response) {
         { new: true, upsert: true }
     )
         .then(() => {
+            TwitchManager.guilds.add(data.guildId);
             TwitchManager.data.set(data.streamer, { [data.channelId]: data });
             TwitchManager.tempChannelsNotified.delete(`${data.streamer}.${data.channelId}`);
             return res.send(true);
