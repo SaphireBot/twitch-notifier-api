@@ -6,8 +6,8 @@ export default function data(_: any, callback: CallbackType) {
         streamers: {
             list: Array.from(TwitchManager.data.keys()),
             count: TwitchManager.data.size,
-            online: TwitchManager.streamersOnline.size,
-            offline: Array.from(TwitchManager.streamers).filter(str => !TwitchManager.streamersOnline.has(str))
+            online: Object.keys(TwitchManager.streamersOnline),
+            offline: Object.keys(TwitchManager.streamers).filter(streamer => !TwitchManager.streamersOnline.has(streamer))
         },
         guildsId: Array.from(TwitchManager.guilds),
         notifications: TwitchManager.notificationsCount,
