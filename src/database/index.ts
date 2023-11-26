@@ -29,17 +29,19 @@ export default new class Database {
             return process.exit();
         }
 
-        const clientData = await this.Client.findOne({ id: env.SAPHIRE_ID });
+        const data = await this.Client.findOne({ id: env.SAPHIRE_ID });
+        TwitchManager.notificationsCount = data?.TwitchNotifications || 0;
 
-        await this.refresh();
-        TwitchManager.notificationsCount = clientData?.TwitchNotifications || 0;
+        await this.loadGuildsData();
+        await TwitchManager.setTokens(data as any);
         TwitchManager.load();
         this.watch();
         return;
     }
 
-    async refresh() {
+    async loadGuildsData() {
         const data = await this.Twitch.find();
+
         for await (const d of data) {
             if (!d.streamer || !d.notifiers) {
                 await this.Twitch.findByIdAndDelete(d._id);
@@ -53,7 +55,7 @@ export default new class Database {
             }
         }
 
-        return true;
+        return;
     }
 
     async watch() {

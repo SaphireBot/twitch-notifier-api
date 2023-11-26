@@ -105,3 +105,5 @@ export interface GetChannelFollowers {
 export interface CallbackType {
     (data: any): void
 }
+
+export type AccessTokensName = "TwitchAccessToken" | "TwitchAccessTokenSecond" | "TwitchAccessTokenThird" | "TwitchAccessTokenFourth";

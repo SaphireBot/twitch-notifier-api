@@ -2,24 +2,26 @@ import { env } from "process";
 import Database from "../database";
 import { ButtonStyle, Collection, DiscordAPIError, REST, Routes, parseEmoji, time, APIGuild } from "discord.js";
 import { TwitchLanguages, emojis as e } from "../data.json";
-import { StreamData, NotifierData, UserData, } from "../@types/twitch";
+import { StreamData, NotifierData, UserData, AccessTokensName, } from "../@types/twitch";
 import { TwitchSchema } from "../database/twitch_model";
 import { renewToken, checkAccessTokenAndStart } from "./tokens";
 import { t } from "../translator";
+import { ClientSchema } from "../database/client_model";
 
 const rest = new REST().setToken(env.DISCORD_TOKEN);
 
 export default new class TwitchManager {
     declare streamers: Set<string>;
     declare data: Collection<string, Record<string, NotifierData>>;
-    declare TwitchAccessToken: string | undefined | void;
-    declare TwitchAccessTokenSecond: string | undefined | void;
-    declare TwitchAccessTokenThird: string | undefined | void;
     declare streamersOnline: Map<string, StreamData>;
     declare streamersData: Map<string, UserData>;
     declare guildsLocale: Map<string, string>;
     declare notificationInThisSeason: number;
     declare streamersQueueCheck: string[];
+    TwitchAccessToken = "";
+    TwitchAccessTokenSecond = "";
+    TwitchAccessTokenThird = "";
+    TwitchAccessTokenFourth = "";
     requests = 0;
     notificationsCount = 0;
     guilds = new Set<string>();
@@ -34,34 +36,32 @@ export default new class TwitchManager {
         this.streamersOnline = new Map();
         this.streamersData = new Map();
         this.data = new Collection();
-        this.TwitchAccessToken = undefined;
-        this.TwitchAccessTokenSecond = undefined;
-        this.TwitchAccessTokenThird = undefined;
         this.notificationInThisSeason = 0;
         this.streamersQueueCheck = [];
         this.guildsLocale = new Map();
     }
 
     async load(): Promise<any> {
-        await this.setTokens();
-        if (this.tokensIsUndefined) await renewToken(3);
+
+        if (this.tokensIsUndefined) await renewToken("all");
         if (this.tokensIsUndefined) return this.exit("Twitch Access Token not found");
 
         this.streamers = new Set(Array.from(this.data.keys()));
         this.streamersQueueCheck = Array.from(this.streamers);
 
-        return checkAccessTokenAndStart();
+        return await checkAccessTokenAndStart();
     }
 
     get tokensIsUndefined() {
-        return !this.TwitchAccessToken && !this.TwitchAccessTokenSecond && !this.TwitchAccessTokenThird;
+        return !this.TwitchAccessToken && !this.TwitchAccessTokenSecond && !this.TwitchAccessTokenThird && !this.TwitchAccessTokenFourth;
     }
 
-    async setTokens(): Promise<void> {
-        const data = await Database.Client.findOne({ id: env.SAPHIRE_ID });
-        this.TwitchAccessToken = data?.TwitchAccessToken;
-        this.TwitchAccessTokenSecond = data?.TwitchAccessTokenSecond;
-        this.TwitchAccessTokenThird = data?.TwitchAccessTokenThird;
+    async setTokens(data: ClientSchema): Promise<void> {
+        for await (const token of ["TwitchAccessToken", "TwitchAccessTokenSecond", "TwitchAccessTokenThird", "TwitchAccessTokenFourth"])
+            data[token as keyof typeof data]
+                ? this[token as keyof typeof this] = data[token as keyof typeof data] || ""
+                : await renewToken(token as any);
+
         return;
     }
 
@@ -113,7 +113,7 @@ export default new class TwitchManager {
                     }
 
                     if (res.status === 400) {
-                        console.log(res.json().then(r => r), headers, url);
+                        console.log(await res.json().catch(() => "error to '.json()' the res"), headers, url);
                         this.requests--;
                         return resolve({ message: "Status 400", res: await res.json() });
                     }
@@ -125,7 +125,7 @@ export default new class TwitchManager {
                     if (!res) return;
 
                     if (res.message === "Client ID and OAuth token do not match") {
-                        await renewToken(this.accessTokenID(headers.Authorization!));
+                        await renewToken(this.accessTokenKey(headers.Authorization!));
                         this.requests--;
                         return resolve({ message: "Client ID and OAuth token do not match" });
                     }
@@ -139,7 +139,7 @@ export default new class TwitchManager {
                     if (res.message === "invalid access token") {
                         this.requests--;
                         resolve({ message: "invalid access token" });
-                        await renewToken(this.accessTokenID(headers.Authorization!));
+                        await renewToken(this.accessTokenKey(headers.Authorization!));
                         if (this.tokensIsUndefined) return this.exit("TwitchAccessToken missing");
 
                         return;
@@ -167,12 +167,13 @@ export default new class TwitchManager {
         });
     }
 
-    accessTokenID(accessToken: string) {
+    accessTokenKey(accessToken: string) {
         return {
-            [`${this.TwitchAccessToken}`]: 1,
-            [`${this.TwitchAccessTokenSecond}`]: 2,
-            [`${this.TwitchAccessTokenThird}`]: 3,
-        }[accessToken] as 1 | 2 | 3;
+            [`${this.TwitchAccessToken}`]: "TwitchAccessToken",
+            [`${this.TwitchAccessTokenSecond}`]: "TwitchAccessTokenSecond",
+            [`${this.TwitchAccessTokenThird}`]: "TwitchAccessTokenThird",
+            [`${this.TwitchAccessTokenFourth}`]: "TwitchAccessTokenFourth",
+        }[accessToken] as AccessTokensName | undefined;
     }
 
     async startCounter() {
@@ -270,8 +271,8 @@ export default new class TwitchManager {
                 }
 
                 notifierData[doc.streamer]
-                    ? notifierData[doc.streamer].push({ channelId: data.guildId, guildId: data.guildId })
-                    : notifierData[doc.streamer] = [{ channelId: data.guildId, guildId: data.guildId }];
+                    ? notifierData[doc.streamer].push({ channelId: data.channelId, guildId: data.guildId })
+                    : notifierData[doc.streamer] = [{ channelId: data.channelId, guildId: data.guildId }];
             }
 
         }
@@ -299,6 +300,7 @@ export default new class TwitchManager {
             .then(document => {
                 const doc = document?.toObject();
                 if (doc?.streamer) this.data.set(doc?.streamer, doc?.notifiers);
+                return;
             })
             .catch(console.log);
 
@@ -627,7 +629,11 @@ export default new class TwitchManager {
             {
                 Authorization: this.TwitchAccessTokenThird,
                 "Client-Id": `${env.TWITCH_CLIENT_ID_THIRD}`
-            }
+            },
+            {
+                Authorization: this.TwitchAccessTokenFourth,
+                "Client-Id": `${env.TWITCH_CLIENT_ID_FOURTH}`
+            },
         ]
             .filter(h => !this.sleepAccessTokens.has(h.Authorization!) && (this.lastAccessToken !== h.Authorization!));
 
