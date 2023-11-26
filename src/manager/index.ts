@@ -372,7 +372,7 @@ export default new class TwitchManager {
                                 ? [{
                                     color: 0x9c44fb, /* Twitch's Logo Purple */
                                     author: {
-                                        name: t("no_longer_online", { e, streamer: data.display_name || streamer, locale }),
+                                        name: t("no_longer_online", { streamer: data.display_name || streamer, locale }),
                                         icon_url: data.profile_image_url as string,
                                         url: `https://www.twitch.tv/${streamer}`
                                     },

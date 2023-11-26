@@ -1,5 +1,5 @@
 {
-    "no_longer_online": "{{e.Notification}} | **{{streamer}}** não está mais online",
+    "no_longer_online": "{{streamer}} não está mais online",
     "is_live": "**{{stream.display_name}}** está em live na Twitch.",
     "no_title_defined": "Nenhum título foi definido",
     "streaming": "📺 Transmitindo **{{game}}**\n👥 {{viewers}} pessoas assistindo agora",
