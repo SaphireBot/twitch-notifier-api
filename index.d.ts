@@ -17,5 +17,8 @@ declare namespace NodeJS {
 
         TWITCH_CLIENT_ID_THIRD: string
         TWITCH_CLIENT_SECRET_THIRD: string
+
+        TWITCH_CLIENT_ID_FOURTH: string
+        TWITCH_CLIENT_SECRET_FOURTH: string
     }
 }
