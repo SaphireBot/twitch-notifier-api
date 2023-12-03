@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import { env } from "process";
 import TwitchManager from "../manager";
 
-export default async function active(req: Request, res: Response) {
+export default async function get_streamers(req: Request, res: Response) {
 
     if (req.headers.authorization !== env.TWITCH_CLIENT_SECRET)
         return res.send("unauthorized");

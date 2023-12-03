@@ -50,8 +50,8 @@ async function validate(accessToken: string, tokenKey: AccessTokensName) {
             headers: { Authorization: `OAuth ${accessToken}` }
         }
     )
-        .then(res => res.json())
-        .then(async (data: OauthValidade | FetchError) => {
+        .then(async (res): Promise<OauthValidade | FetchError | any> => await res.json())
+        .then(async data => {
             if (
                 ("status" in data && "message" in data)
                 || ("expires_in" in data && data.expires_in < 86400)
@@ -78,8 +78,8 @@ async function renew(TWITCH_CLIENT_ID: string, TWITCH_CLIENT_SECRET: string, key
             headers: { "Content-Type": "application/x-www-form-urlencoded" }
         }
     )
-        .then(res => res.json())
-        .then(async (data: OauthToken | FetchError) => {
+        .then(async (res): Promise<OauthToken | FetchError | any> => await res.json())
+        .then(async data => {
             console.log("TOKEN RENEWED", data);
 
             if ("status" in data)

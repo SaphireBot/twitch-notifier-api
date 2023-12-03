@@ -23,6 +23,7 @@ export default new class TwitchManager {
     TwitchAccessTokenThird = "";
     TwitchAccessTokenFourth = "";
     requests = 0;
+    requests_made_in_this_session = 0;
     notificationsCount = 0;
     guilds = new Set<string>();
     channelsToIgnore = new Set<string>();
@@ -66,7 +67,7 @@ export default new class TwitchManager {
     }
 
     async fetcher<T = unknown>(url: string): Promise<{ message: "string" } | any[] | undefined | T | any> {
-
+        this.requests_made_in_this_session++;
         if (!url || this.tokensIsUndefined) return;
 
         this.requests++;
@@ -94,7 +95,7 @@ export default new class TwitchManager {
                     "Client-Id": headers["Client-Id"]
                 }
             })
-                .then(async res => {
+                .then(async (res): Promise<any> => {
                     if (timedOut) return;
                     clearTimeout(timeout);
 
@@ -121,7 +122,6 @@ export default new class TwitchManager {
                     return res.json();
                 })
                 .then(async res => {
-
                     if (!res) return;
 
                     if (res.message === "Client ID and OAuth token do not match") {
@@ -146,7 +146,7 @@ export default new class TwitchManager {
                     }
 
                     this.requests--;
-                    if (url.includes("/followers")) return resolve(res.total);
+                    if (url.includes("/followers")) return resolve(res.total || 0);
                     return resolve(res.data || []);
                 })
                 .catch(err => {
