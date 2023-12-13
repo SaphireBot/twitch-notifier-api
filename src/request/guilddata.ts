@@ -13,7 +13,7 @@ export default async function guilddata(req: Request, res: Response) {
         || typeof guildId !== "string"
     ) return res.send([]);
 
-    const data = TwitchManager.getAllNotifersFromThisGuild(guildId);
+    const data = TwitchManager.getAllNotifiersFromThisGuild(guildId);
     return res.send(data);
 
 }

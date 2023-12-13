@@ -18,10 +18,10 @@ export default new class TwitchManager {
     declare guildsLocale: Map<string, string>;
     declare notificationInThisSeason: number;
     declare streamersQueueCheck: string[];
-    TwitchAccessToken = "";
-    TwitchAccessTokenSecond = "";
-    TwitchAccessTokenThird = "";
-    TwitchAccessTokenFourth = "";
+    declare TwitchAccessToken: string;
+    declare TwitchAccessTokenSecond: string;
+    declare TwitchAccessTokenThird: string;
+    declare TwitchAccessTokenFourth: string;
     requests = 0;
     requests_made_in_this_session = 0;
     notificationsCount = 0;
@@ -40,6 +40,10 @@ export default new class TwitchManager {
         this.notificationInThisSeason = 0;
         this.streamersQueueCheck = [];
         this.guildsLocale = new Map();
+        this.TwitchAccessToken = "";
+        this.TwitchAccessTokenSecond = "";
+        this.TwitchAccessTokenThird = "";
+        this.TwitchAccessTokenFourth = "";
     }
 
     async load(): Promise<any> {
@@ -58,10 +62,10 @@ export default new class TwitchManager {
     }
 
     async setTokens(data: ClientSchema): Promise<void> {
-        for await (const token of ["TwitchAccessToken", "TwitchAccessTokenSecond", "TwitchAccessTokenThird", "TwitchAccessTokenFourth"])
-            data[token as keyof typeof data]
-                ? this[token as keyof typeof this] = data[token as keyof typeof data] || ""
-                : await renewToken(token as any);
+        for await (const token of ["TwitchAccessToken", "TwitchAccessTokenSecond", "TwitchAccessTokenThird", "TwitchAccessTokenFourth"] as AccessTokensName[])
+            if (typeof (data?.[token]) === "string")
+                this[token] = data[token] as string;
+            else await renewToken(token as any);
 
         return;
     }
@@ -266,22 +270,25 @@ export default new class TwitchManager {
             notifiers = notifiers?.filter(d => d.notified);
 
             for await (const data of notifiers) {
-                if (!this.guildsLocale.has(data.guildId)) {
-                    this.guildsLocale.set(data.guildId, await this.getGuildLocale(data.guildId));
-                }
+                if (!this.guildsLocale.has(data.guildId))
+                    this.guildsLocale.set(
+                        data.guildId,
+                        await this.getGuildLocale(data.guildId)
+                    );
 
                 notifierData[doc.streamer]
                     ? notifierData[doc.streamer].push({ channelId: data.channelId, guildId: data.guildId })
                     : notifierData[doc.streamer] = [{ channelId: data.channelId, guildId: data.guildId }];
+                continue;
             }
 
+            continue;
         }
 
         for (const [streamer, _] of Object.entries(notifierData))
             this.refreshChannelNotified(streamer, Object.values(notifierData).map(d => d[0].channelId).flat(), false);
 
-        this.notifyOfflineStreamersChannels(notifierData);
-        return;
+        return await this.notifyOfflineStreamersChannels(notifierData);
     }
 
     async refreshChannelNotified(streamer: string, channelsId: string[], notified: boolean) {
@@ -550,7 +557,7 @@ export default new class TwitchManager {
     async removeAllNotifiersFromThisGuild(guildId: string) {
         if (!guildId) return;
 
-        const notifiers = this.getAllNotifersFromThisGuild(guildId);
+        const notifiers = this.getAllNotifiersFromThisGuild(guildId);
         if (!notifiers?.length) return;
 
         const unset: Record<string, boolean> = {};
@@ -592,7 +599,7 @@ export default new class TwitchManager {
         return true;
     }
 
-    getAllNotifersFromThisGuild(guildId: string) {
+    getAllNotifiersFromThisGuild(guildId: string) {
         return this.data
             .filter(v => Object.values(v || {})?.[0]?.guildId === guildId)
             .map((notifier, streamer) => {

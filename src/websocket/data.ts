@@ -9,14 +9,15 @@ export default async function data(_: any, callback: CallbackType) {
     const streamers = Array.from(TwitchManager.data.keys()).filter(Boolean);
 
     return callback({
+        notifications: client?.TwitchNotifications || 0,
+        requests_awaiting: TwitchManager.requests,
+        requests_made_in_this_session: TwitchManager.requests_made_in_this_session,
+        guilds: Array.from(TwitchManager.guilds).filter(Boolean),
         streamers: {
             list: streamers,
             count: streamers.length,
             online: streamers.filter(str => TwitchManager.streamersOnline.has(str)),
-            offline: streamers.filter(str => !TwitchManager.streamersOnline.has(str)),
-        },
-        guildsId: Array.from(TwitchManager.guilds).filter(Boolean),
-        notifications: client?.TwitchNotifications || 0,
-        requests: TwitchManager.requests
+            offline: streamers.filter(str => !TwitchManager.streamersOnline.has(str))
+        }
     });
 }
