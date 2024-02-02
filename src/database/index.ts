@@ -109,6 +109,7 @@ export default new class Database {
                     return TwitchManager.data.delete(streamer);
                 }
 
-            });
+            })
+            .on("error", (err) => console.log("ERROR WATCHER - LINE 113", err));
     }
 };
