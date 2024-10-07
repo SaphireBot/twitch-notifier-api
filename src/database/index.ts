@@ -14,18 +14,34 @@ export default new class Database {
     async load() {
 
         set("strictQuery", true);
-        const response = await connect(env.DATABASE_LINK_CONNECTION)
+        const response = await connect(
+            env.DATABASE_LINK_CONNECTION,
+            {
+                serverSelectionTimeoutMS: 5000
+            }
+        )
             .then(() => {
                 console.log("Database Connected");
                 return true;
             })
-            .catch(err => {
-                console.log("Database Connect Error", err);
-                return process.exit();
+            .catch(async (err: Error) => {
+                const message = err.message || "";
+                console.log("Database Connect Error - MESSAGE - ", message);
+
+                if (message.includes("timed out")) {
+                    console.log("Reconnecting Database....");
+                    await this.load();
+                    return "reconnecting...";
+                }
+
+                console.log("Database Error", err);
+                return;
             });
 
+        if (response === "reconnecting...") return;
+
         if (!response) {
-            console.log("Database Not Connect");
+            console.log("Database Didnt Connect");
             return process.exit();
         }
 

@@ -166,7 +166,9 @@ export default new class TwitchManager {
                         return;
 
                     if (err?.code === "EAI_AGAIN") return;
-                    console.log("TWITCH MANAGER FETCH ERROR - At Fetcher Function 3", err, url);
+                    console.log("TWITCH MANAGER FETCH ERROR - At Fetcher Function 3");
+                    console.log("URL: ", url);
+                    console.log("ERROR CODE: ", err?.code);
                     return;
                 });
         });
