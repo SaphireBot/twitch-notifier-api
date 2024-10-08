@@ -13,6 +13,7 @@ import getstreamers from "./request/get_streamers";
 import execFetch from "./request/fetch";
 import guildData from "./request/guilddata";
 import data from "./request/data";
+import "./manager/discloud";
 
 const app = express();
 app.use(express.json());
