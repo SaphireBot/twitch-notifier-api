@@ -32,6 +32,8 @@ app.get("/guildData", guildData);
 app.get("/ping", (_, res) => res.sendStatus(200));
 app.get("/data", data);
 
+app.get("/", (_, res) => res.status(200).send({ status: "Welcome to Twitch Saphire's API" }));
+
 server.listen(Number(env.SERVER_PORT || 8080), "0.0.0.0", connection);
 
 function connection(error?: Error | null) {

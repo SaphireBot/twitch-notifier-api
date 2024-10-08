@@ -5,6 +5,7 @@ import { env } from "process";
 import TwitchManager from "../manager";
 import { NotifierData } from "../@types/twitch";
 import { Collection } from "discord.js";
+import { discloud } from "discloud.app";
 
 export default new class Database {
     Twitch = TwitchModel;
@@ -42,7 +43,8 @@ export default new class Database {
 
         if (!response) {
             console.log("Database Didnt Connect");
-            return process.exit();
+            await discloud.apps.restart("twitch").catch(() => { });
+            return;
         }
 
         const data = await this.Client.findOne({ id: env.SAPHIRE_ID });

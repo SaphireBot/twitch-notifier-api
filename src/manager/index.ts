@@ -603,7 +603,7 @@ export default new class TwitchManager {
     }
 
     getAllNotifiersFromThisGuild(guildId: string) {
-        return this.data
+        const data = this.data
             .filter(v => Object.values(v || {})?.[0]?.guildId === guildId)
             .map((notifier, streamer) => {
                 const data = Object.values(notifier);
@@ -611,6 +611,8 @@ export default new class TwitchManager {
                 return data;
             })
             .flat();
+        console.log(data);
+        return data;
     }
 
     num(num: number): string {

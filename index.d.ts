@@ -4,6 +4,7 @@ declare namespace NodeJS {
         WEBSOCKET_CONNECTION_AUTHORIZATION: string
         WEBSOCKET_URL: string
         DISCORD_TOKEN: string
+        DISCLOUD_TOKEN: string
         DATABASE_LINK_CONNECTION: string
         SAPHIRE_ID: string
         CANARY_ID: string
