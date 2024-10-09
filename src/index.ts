@@ -18,22 +18,39 @@ import "./manager/discloud";
 const app = express();
 app.use(express.json());
 app.disable("x-powered-by");
-app.use(cors({ methods: "GET,POST,DELETE",  }));
+app.use(cors({ methods: "GET,POST,DELETE" }));
 
 const server = createServer(app);
 const ws = new Server(server);
 ws.on("connection", WebscoketConnection);
 
-app.post("/active", active);
-app.post("/disable", disable);
-app.get("/streamers", streamers);
-app.get("/getstreamers", getstreamers);
-app.get("/fetch", execFetch);
-app.get("/guildData", guildData);
-app.get("/ping", (_, res) => res.sendStatus(200));
-app.get("/data", data);
+app.post("/active", (req, res) => {
+    active(req, res);
+});
+app.post("/disable", (req, res) => {
+    disable(req, res);
+});
+app.get("/streamers", (req, res) => {
+    streamers(req, res);
+});
+app.get("/getstreamers", (req, res) => {
+    getstreamers(req, res);
+});
+app.get("/fetch", (req, res) => {
+    execFetch(req, res);
+});
+app.get("/guildData", (req, res) => {
+    guildData(req, res);
+});
+app.get("/ping", (_, res) => { res.sendStatus(200); });
 
-app.get("/", (_, res) => res.status(200).send({ status: "Welcome to Twitch Saphire's API" }));
+app.get("/data", (req, res) => {
+    data(req, res);
+});
+
+app.get("/", (_, res) => {
+    res.status(200).send({ status: "Welcome to Twitch Saphire's API" });
+});
 
 server.listen(Number(env.SERVER_PORT || 8080), "0.0.0.0", connection);
 

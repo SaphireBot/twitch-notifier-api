@@ -1,4 +1,4 @@
-import { Request, Response } from "express";
+import type { Request, Response } from "express";
 import { UpdateStreamerParams } from "../@types/twitch";
 import { env } from "process";
 import Database from "../database";
@@ -17,7 +17,7 @@ export default async function active(req: Request, res: Response) {
 
     await Database.Twitch.updateOne(
         { streamer: data.streamer },
-        { $unset: { [`notifiers.${data.channelId}`]: true } }
+        { $unset: { [`notifiers.${data.channelId}`]: true } },
     );
 
     return await Database.Twitch.updateOne(
@@ -29,11 +29,11 @@ export default async function active(req: Request, res: Response) {
                     guildId: data.guildId,
                     notified: false,
                     roleId: data.roleId,
-                    message: data.message
-                }
-            }
+                    message: data.message,
+                },
+            },
         },
-        { new: true, upsert: true }
+        { new: true, upsert: true },
     )
         .then(() => {
             TwitchManager.guilds.add(data.guildId);
